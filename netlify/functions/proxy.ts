@@ -68,14 +68,12 @@ export default async (request: Request, context: Context) => {
   const response = await fetch(url, {
     body: request.body,
     method: request.method,
-    duplex: 'half',
     headers,
   });
 
   const responseHeaders = {
     ...CORS_HEADERS,
-    ...Object.fromEntries(response.headers),
-    "content-encoding": null
+    ...Object.fromEntries(response.headers)
   };
 
   return new Response(response.body, {
