@@ -1,4 +1,5 @@
 import { Context } from "@netlify/edge-functions";
+import fetch from 'node-fetch';
 
 const pickHeaders = (headers: Headers, keys: (string | RegExp)[]): Headers => {
   const picked = new Headers();
@@ -69,8 +70,7 @@ export default async (request: Request, context: Context) => {
   const response = await fetch(url, {
     body: request.body,
     method: request.method,
-    headers,
-
+    headers
   });
 
   const responseHeaders = {
