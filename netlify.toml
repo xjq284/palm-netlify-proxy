@@ -9,3 +9,6 @@
   to = "/.netlify/functions/proxy"
   status = 200
   force = true
+
+[build]
+       node_version = " 23.10.0" 
