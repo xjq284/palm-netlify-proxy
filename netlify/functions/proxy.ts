@@ -45,7 +45,8 @@ export default async (request: Request, context: Context) => {
   <li>You want to customize the Google PaLM API</li>
   </ol>
   <p>For technical discussions, please visit <a href="https://simonmy.com/posts/使用netlify反向代理google-palm-api.html">https://simonmy.com/posts/使用netlify反向代理google-palm-api.html</a></p>
-</body>
+   改了看看变了没
+  </body>
 </html>
     `
     return new Response(blank_html, {
