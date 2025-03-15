@@ -1,14 +1,6 @@
-[[headers]]
-  for = "/*"
-    [headers.values]
-    Access-Control-Allow-Origin = "*"
-    Access-Control-Allow-Headers = "*"
-    Access-Control-Allow-Methods = "*"
-[[redirects]]
-  from = "/*"
-  to = "/.netlify/functions/proxy"
-  status = 200
-  force = true
+[[edge_functions]]
+  path = "/*"
+  function = "palm-proxy"
 
-[build]
+[[build]]
        node_version = " 23.10.0" 
