@@ -1,85 +1,139 @@
 import { Context } from "@netlify/edge-functions";
-import fetch from 'node-fetch';
 
-const pickHeaders = (headers: Headers, keys: (string | RegExp)[]): Headers => {
-  const picked = new Headers();
-  for (const key of headers.keys()) {
-    if (keys.some((k) => (typeof k === "string" ? k === key : k.test(key)))) {
-      const value = headers.get(key);
-      if (typeof value === "string") {
-        picked.set(key, value);
-      }
-    }
-  }
-  return picked;
-};
+const CORS_HEADERS = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Goog-Api-Key",
+} as const;
 
-const CORS_HEADERS: Record<string, string> = {
-  "access-control-allow-origin": "*",
-  "access-control-allow-methods": "*",
-  "access-control-allow-headers": "*",
-};
+const FORWARD_HEADERS = ["content-type", "x-goog-api-client", "x-goog-api-key"];
 
 export default async (request: Request, context: Context) => {
-
+  // 处理OPTIONS预检请求
   if (request.method === "OPTIONS") {
     return new Response(null, {
-      headers: CORS_HEADERS,
+      headers: CORS_HEADERS
     });
   }
 
-  const { pathname, searchParams } = new URL(request.url);
-  if(pathname === "/") {
-    let blank_html = `
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="UTF-8">
-  <title>Google PaLM API proxy on Netlify Edge</title>
-</head>
-<body>
-  <h1 id="google-palm-api-proxy-on-netlify-edge">Google PaLM API proxy on Netlify Edge</h1>
-  <p>Tips: This project uses a reverse proxy to solve problems such as location restrictions in Google APIs. </p>
-  <p>If you have any of the following requirements, you may need the support of this project.</p>
-  <ol>
-  <li>When you see the error message &quot;User location is not supported for the API use&quot; when calling the Google PaLM API</li>
-  <li>You want to customize the Google PaLM API</li>
-  </ol>
-  <p>For technical discussions, please visit <a href="https://simonmy.com/posts/使用netlify反向代理google-palm-api.html">https://simonmy.com/posts/使用netlify反向代理google-palm-api.html</a></p>
-   改了看看变了没
-  </body>
-</html>
-    `
-    return new Response(blank_html, {
+  // 根路径返回说明文档
+  const url = new URL(request.url);
+  if (url.pathname === "/") {
+    return new Response(getIndexHtml(), {
       headers: {
         ...CORS_HEADERS,
-        "content-type": "text/html"
-      },
+        "Content-Type": "text/html; charset=utf-8"
+      }
     });
   }
 
-  const url = new URL(pathname, "https://generativelanguage.googleapis.com");
-  searchParams.delete("_path");
+  try {
+    // 构建Google API目标URL
+    const targetUrl = new URL(
+      `https://generativelanguage.googleapis.com${url.pathname}`
+    );
+    
+    // 保留所有查询参数
+    url.searchParams.forEach((value, key) => {
+      if (key !== "_path") {
+        targetUrl.searchParams.set(key, value);
+      }
+    });
 
-  searchParams.forEach((value, key) => {
-    url.searchParams.append(key, value);
-  });
+    // 构造转发请求头
+    const headers = new Headers();
+    FORWARD_HEADERS.forEach(header => {
+      const value = request.headers.get(header);
+      if (value) headers.set(header, value);
+    });
 
-  const headers = pickHeaders(request.headers, ["content-type", "x-goog-api-client", "x-goog-api-key", "accept-encoding"]);
+    // 包括body在内的双向流处理
+    const fetchOptions: RequestInit = {
+      method: request.method,
+      headers: headers,
+      body: request.body,
+      // 关键修复：添加duplex参数
+      ...(request.method !== "GET" && { duplex: "half" })
+    };
 
-  const response = await fetch(url, {
-    body: request.body,
-    method: request.method,
-    headers
-  });
+    // 转发请求到Google API
+    const apiResponse = await fetch(targetUrl, fetchOptions);
 
-  const responseHeaders = {
-    ...CORS_HEADERS,
-    ...Object.fromEntries(response.headers)
-  };
+    // 返回处理过的响应
+    return new Response(apiResponse.body, {
+      status: apiResponse.status,
+      headers: {
+        ...CORS_HEADERS,
+        ...Object.fromEntries(apiResponse.headers)
+      }
+    });
 
-  return new Response(response.body, {
-    headers: responseHeaders,
-    status: response.status
-  });
+  } catch (error) {
+    console.error("Proxy Error:", error);
+    return new Response(JSON.stringify({
+      error: "Proxy Handler Error",
+      message: error instanceof Error ? error.message : "Unknown error"
+    }), {
+      status: 500,
+      headers: {
+        ...CORS_HEADERS,
+        "Content-Type": "application/json"
+      }
+    });
+  }
 };
+
+function getIndexHtml() {
+  return `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Google PaLM API Proxy</title>
+  <style>
+    body { font-family: system-ui, sans-serif; line-height: 1.6; max-width: 800px; margin: 2rem auto; padding: 0 1rem; }
+    h1 { color: #1a73e8; }
+    code { background: #f3f4f6; padding: 2px 4px; border-radius: 4px; }
+    pre { background: #f8f9fa; padding: 1rem; overflow-x: auto; }
+    a { color: #1a73e8; text-decoration: none; }
+    .warning { color: #ea8600; }
+  </style>
+</head>
+<body>
+  <h1>Google PaLM API Proxy Service</h1>
+  
+  <div class="warning">
+    <h2>⚠️ Common Usage Scenarios</h2>
+    <ul>
+      <li>Solving "User location is not supported" API errors</li>
+      <li>Overcoming regional restrictions for API access</li>
+      <li>Adding custom authentication layers</li>
+    </ul>
+  </div>
+
+  <h2>🚀 API Proxy Usage</h2>
+  <p>Replace the base URL in your API calls with this service's endpoint:</p>
+  <pre>https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent
+ → 
+https://your-domain.netlify.app/v1beta/models/gemini-pro:generateContent</pre>
+
+  <h2>🔑 Required Parameters</h2>
+  <p>You must include either:</p>
+  <ul>
+    <li><code>key=YOUR_API_KEY</code> query parameter</li>
+    <li><code>Authorization: Bearer YOUR_TOKEN</code> header</li>
+  </ul>
+
+  <h2>💡 System Status</h2>
+  <ul>
+    <li>Service Uptime: <span id="uptime">Loading...</span></li>
+    <li>Last Updated: ${new Date().toISOString()}</li>
+  </ul>
+
+  <footer>
+    <p>Documentation: <a href="https://developers.generativeai.google" target="_blank">Official API Docs</a></p>
+  </footer>
+</body>
+</html>`;
+}
